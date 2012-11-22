@@ -1,0 +1,4 @@
+isr
+===
+
+isr odwrocone wahadlo

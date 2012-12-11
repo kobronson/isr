@@ -1,0 +1,103 @@
+
+    // Port Input and Output
+
+#define GYRO         IN_1
+#define ACCEL        IN_4 
+#define LEFT_MOTOR   OUT_C
+#define RIGHT_MOTOR  OUT_A
+#define MOTORS       OUT_AC
+
+
+/*! Szybkość obrotu silników */
+#define OFFSET 15
+#define TRESHOLD 5
+#define SPEED 50
+#define CONTROL_WAIT 25
+
+#define TAB_LEN 100
+int sumX=0;
+int sumY=0;
+int sumZ=-200*TAB_LEN;
+int sumG=10*TAB_LEN;
+
+int tabNum=0;
+int tabX[TAB_LEN];
+int tabY[TAB_LEN];
+int tabZ[TAB_LEN];
+int tabG[TAB_LEN];
+
+
+int readings(int var,int tab[],int &sum,bool update)
+{
+		
+	sum=sum - tab[tabNum]+var;
+	tab[tabNum]=var;
+	if(update) tabNum=(tabNum+1)%TAB_LEN;
+		
+	return sum/TAB_LEN;
+}
+
+task main(){
+	
+	/* Uruchamiamy czujniki */
+	SetSensorHTGyro(GYRO);
+	SetSensorLowspeed(ACCEL);
+	ArrayInit(tabX,0,TAB_LEN);
+	ArrayInit(tabY,0,TAB_LEN);
+	ArrayInit(tabZ,-200,TAB_LEN);
+	ArrayInit(tabG,10,TAB_LEN);
+}
+
+task stoj(){
+	Follows(main);
+	int x,y,z,gyro;
+	int X,Y,Z,G;
+	
+ 
+	while(true){
+		ClearLine(LCD_LINE1);
+
+		ReadSensorHTAccel(ACCEL, z, y, x);
+		gyro = SensorHTGyro(GYRO); 
+		X=readings(x,tabX,sumX,false);
+		//Y=readings(y,tabY,sumY,false);
+		//Z=readings(z,tabZ,sumZ,false);
+		//G=readings(gyro,tabG,sumG,true);
+		
+		if(tabNum==99)
+		{
+/*
+		TextOut(0,  LCD_LINE1, "x:     ");
+    		NumOut(6*2, LCD_LINE1, X);
+    		TextOut(0,  LCD_LINE2, "y:     ");
+    		NumOut(6*2, LCD_LINE2, Y);
+    		TextOut(0,  LCD_LINE3, "z:     ");
+    		NumOut(6*2, LCD_LINE3, Z);
+		TextOut(0,  LCD_LINE4, "G:     ");
+    		NumOut(6*2, LCD_LINE4, G);
+*/
+		TextOut(0,  LCD_LINE1, "x:     ");
+    		NumOut(6*2, LCD_LINE1, x);
+    		TextOut(0,  LCD_LINE2, "y:     ");
+    		NumOut(6*2, LCD_LINE2, y);
+    		TextOut(0,  LCD_LINE3, "z:     ");
+    		NumOut(6*2, LCD_LINE3, z);
+		TextOut(0,  LCD_LINE4, "G:     ");
+    		NumOut(6*2, LCD_LINE4, gyro);
+		}
+
+		/*if (gyro > OFFSET + TRESHOLD ){
+			OnRev(OUT_C, SPEED);
+			OnRev(OUT_A, SPEED);
+		} else if (gyro < OFFSET-TRESHOLD ){
+			OnFwd(OUT_C, SPEED);
+			OnFwd(OUT_A, SPEED);
+		} else {
+			Off(OUT_A);
+			Off(OUT_C);
+		}*/
+		Wait(50);
+	}
+}
+
+

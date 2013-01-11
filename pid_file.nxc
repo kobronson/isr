@@ -29,9 +29,12 @@ long theta_fn1;	//last output of filter (angle) t-1
 long omega_f;	//current output of filter (angular velocity) t
 
 //angle regulator PID
-#define KP 150
-#define KI 2
+#define KP 137
+#define KI 22
 #define KD 0
+#define MOTOR_SCALE_BACK 4
+#define MOTOR_SCALE_FWD 10
+
 #define PID_OUTPUT_DIVIDE 1000
 long y_ref;	//reference angle (for standing still y_ref == 0)
 long u_t;	//wyjscie PID 
@@ -103,10 +106,16 @@ TextOut(0,  LCD_LINE4, "g:     ");
 
 void regulateAnglePID()
 {
+	int PID = 0;
 	e_t2=e_t1;
 	e_t1=e_t;
 	e_t = y_ref - (theta_fn/HZ);
-	u_t= u_t + KP*(e_t - e_t1) + KI*e_t + KD*(e_t - 2*e_t1 + e_t2);
+	PID=KP*(e_t - e_t1) + KI*e_t + KD*(e_t - 2*e_t1 + e_t2);
+	u_t = u_t + PID;
+	if(u_t < -MOTOR_SCALE_BACK*100)
+		u_t = -MOTOR_SCALE_BACK*100;
+	else if(u_t > MOTOR_SCALE_FWD*100)
+		u_t = MOTOR_SCALE_FWD*100;
 }
 
 
@@ -275,30 +284,33 @@ task stoj()
 	while(true)
 	{	
 		// wait aproximately 10ms
+		
 		while(time_next - time_prev < (1000/HZ))
 		{
 			time_next=CurrentTick();
 		}
 		time_prev=time_next;
 		ReadSensorHTAccel(ACCEL, z, y, x);
-		//gyro = SensorHTGyro(GYRO);
-		//gyro=gyro - GYRO_OFFSET;
-		gyro=0;
+		gyro = SensorHTGyro(GYRO);
+		gyro=gyro - GYRO_OFFSET;
+		//gyro=0;
 		//z = z - ACCEL_Z_OFFSET;
 		filter(gyro,x,z);
 		regulateAnglePID();
 
-		write_full(gyro, x, z, theta_m[0], theta_fn, e_t, e_t1, e_t2, u_t);
+		//write_full(gyro, x, z, theta_m[0], theta_fn, e_t, e_t1, e_t2, u_t);
 		//write_short(theta_fn,e_t,u_t);
 		// tutaj dodamy sterowanie
-
+		
 		if(u_t<0)
 		{
-			//OnFwd(MOTORS, -u_t/20);
+			OnFwd(MOTORS, -u_t/MOTOR_SCALE_BACK);
 		}
 		else
 		{
-			//OnRev(MOTORS, u_t/20);
+			OnRev(MOTORS, u_t/MOTOR_SCALE_FWD);
 		}
+		
+		
 	}
 }

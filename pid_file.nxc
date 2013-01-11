@@ -21,7 +21,7 @@
 
 //filter variables
 #define FILTER_TAB_LEN 4
-#define ALFA 3 	// jak wazna jest biezaca wartosc theta (mierzony w stosunku do ALFA_MAX)
+#define ALFA 1 	// jak wazna jest biezaca wartosc theta (mierzony w stosunku do ALFA_MAX)
 #define ALFA_MAX 10
 long theta_m[];	//measured angle in degrees(by accel arctg (x/z))
 long theta_fn;	//current output of filter (angle) t
@@ -55,6 +55,7 @@ void filter(int gyro, int x, int z)
 	sum=0;
 	z2=z*z;
 	c2=x*x+z2;
+	//mnozenie przez 100 bo skalowanie Acos jest (0,100) a nie (0,1)
 	theta= (100*z2)/c2;
 /*			TextOut(0,  LCD_LINE1, "T:     ");
 			NumOut(6*2, LCD_LINE1, theta); */
@@ -280,9 +281,10 @@ task stoj()
 		}
 		time_prev=time_next;
 		ReadSensorHTAccel(ACCEL, z, y, x);
-		gyro = SensorHTGyro(GYRO);
-		gyro=gyro - GYRO_OFFSET;
-		z = z - ACCEL_Z_OFFSET;
+		//gyro = SensorHTGyro(GYRO);
+		//gyro=gyro - GYRO_OFFSET;
+		gyro=0;
+		//z = z - ACCEL_Z_OFFSET;
 		filter(gyro,x,z);
 		regulateAnglePID();
 
@@ -292,11 +294,11 @@ task stoj()
 
 		if(u_t<0)
 		{
-			OnFwd(MOTORS, -u_t/20);
+			//OnFwd(MOTORS, -u_t/20);
 		}
 		else
 		{
-			OnRev(MOTORS, u_t/20);
+			//OnRev(MOTORS, u_t/20);
 		}
 	}
 }

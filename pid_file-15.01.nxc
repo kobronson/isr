@@ -1,0 +1,320 @@
+#define GYRO         IN_1
+#define ACCEL        IN_4 
+#define LEFT_MOTOR   OUT_C
+#define RIGHT_MOTOR  OUT_A
+#define MOTORS       OUT_AC
+
+/*
+ *	if accel x < 0 -> robot falls forward
+ *	if accel x > 0 -> robot falls backward
+ *	if gyro g < GYRO_OFFSET -> robot falls forward
+ *	if gyro g > GYRO_OFFSET -> robot falls backward
+ *	if u_t < 0 -> robot falls backward
+ *	if u_t > 0 -> robot falls forward
+ */
+
+#define GYRO_OFFSET 16
+#define ACCEL_Z_OFFSET -200
+
+//number of measures per second (Hz)
+#define HZ 100
+
+//filter variables
+#define FILTER_TAB_LEN 4
+#define ALFA 1 	// jak wazna jest biezaca wartosc theta (mierzony w stosunku do ALFA_MAX)
+#define ALFA_MAX 10
+long theta_m[];	//measured angle in degrees(by accel arctg (x/z))
+long theta_fn;	//current output of filter (angle) t
+long theta_fn1;	//last output of filter (angle) t-1
+long omega_f;	//current output of filter (angular velocity) t
+long accelTemp;
+
+//angle regulator PID
+#define KP 130
+#define KI 4
+#define KD 0
+#define MOTOR_SCALE 1
+
+#define PID_OUTPUT_DIVIDE 1000
+long y_ref;	//reference angle (for standing still y_ref == 0)
+long u_t;	//wyjscie PID 
+long e_t;	//current t
+long e_t1;	//t-1
+long e_t2;	//t-2
+
+//file variables
+#define FILE_NAME "balans.csv"
+#define FILE_SIZE 10000
+#define SEPARATOR " "
+byte handle = 0;
+long bytesWritten = 0;
+
+void filter(int gyro, int x, int z)
+{
+	long theta;
+	long c2;
+	long z2;
+	long sum;
+	sum=0;
+	z2=z*z;
+	c2=x*x+z2;
+	//mnozenie przez 100 bo skalowanie Acos jest (0,100) a nie (0,1)
+	theta= (100*z2)/c2;
+/*			TextOut(0,  LCD_LINE1, "T:     ");
+			NumOut(6*2, LCD_LINE1, theta); */
+	theta=Acos(theta);
+
+	// chcemy zeby gyro byl wyrazony przez stopnie na milisekundy a nie stopnie na sekundy
+	// najlepiej pomnozyc theta
+	theta=theta*HZ;
+	//theta = theta/100;	
+	
+	if(x < 0)
+	{
+		theta=-theta;
+	}
+/*
+TextOut(0,  LCD_LINE2, "T:     ");
+			NumOut(6*2, LCD_LINE2, theta);
+TextOut(0,  LCD_LINE3, "x:     ");
+			NumOut(6*2, LCD_LINE3, x);
+TextOut(0,  LCD_LINE4, "g:     ");
+			NumOut(6*2, LCD_LINE4, gyro); */
+	for(int i=FILTER_TAB_LEN-1; i>=1; i--)
+	{
+		theta_m[i]=theta_m[i-1];
+		sum=sum + theta_m[i];
+	}
+	theta_m[0]=theta;
+	sum=sum+theta;	
+	
+//	theta_fn1=theta_fn;
+
+	accelTemp = sum*ALFA/(ALFA_MAX*4);
+// na razie dodajemy predkosc katowa do kata
+// zakladamy po prostu jeden okres wiec chcemy podzielić przez okres gyro/okres
+// co latwiej osiagnac mnozac theta*okres
+// i uzyskujemy ta sama skale 
+	long gyroTemp = (theta_fn + gyro)*(ALFA_MAX-ALFA)/ALFA_MAX;
+	theta_fn=gyroTemp + accelTemp;
+
+	
+// zwracamy ile stopni na sekunde wydaje nam się że się obracamy
+// na razie zwracamy odchylenie
+// to wszystko podzielic przez czas
+//	omega_f=theta_fn - theta_fn1;	
+}
+
+void regulateAnglePID()
+{
+	int PID = 0;
+	e_t2=e_t1;
+	e_t1=e_t;
+	e_t = y_ref - (theta_fn/HZ);
+	PID=KP*(e_t - e_t1) + KI*e_t + KD*(e_t - 2*e_t1 + e_t2);
+	u_t = u_t + PID;
+	/*if(u_t < -MOTOR_SCALE_BACK*100)
+		u_t = -MOTOR_SCALE_BACK*100;
+	else if(u_t > MOTOR_SCALE_FWD*100)
+		u_t = MOTOR_SCALE_FWD*100;*/
+}
+
+
+// Make sure file is closed whether or not file operations succeed or fail.
+void shutdown(int delay)
+{
+	if (handle) CloseFile(handle);
+	// Get user's attention.
+	PlayTone(TONE_C5, SEC_1);
+	// Give the user time to read screen messages.
+	Wait(delay);
+	Stop(true);
+}
+
+void write_full(int gyroInput, int accelInputX, int accelInputZ, int theta, int theta_fn, int e_t, int e_t1, int e_t2, int u_t)
+{ 
+	int count, str_len;
+/*
+	Write(handle, gyroInput); WriteString(handle, SEPARATOR, count);
+	Write(handle, accelInputX); WriteString(handle, SEPARATOR, count);
+	Write(handle, accelInputZ); WriteString(handle, SEPARATOR, count);
+	Write(handle, theta); WriteString(handle, SEPARATOR, count);
+	Write(handle, theta_fn); WriteString(handle, SEPARATOR, count);
+	Write(handle, e_t); WriteString(handle, SEPARATOR, count);
+	Write(handle, e_t1); WriteString(handle, SEPARATOR, count);
+	Write(handle, e_t2); WriteString(handle, SEPARATOR, count);
+	Write(handle, u_t);
+	unsigned int rtn_code = Write(handle, "\n");
+*/
+	string str, str1,str2,str3,str4,str5,str6,str7,str8,str9;
+	str1=NumToStr(gyroInput);
+	str2=NumToStr(accelInputX);
+	str3=NumToStr(accelInputZ);
+	str4=NumToStr(theta);
+	str5=NumToStr(theta_fn);
+	str6=NumToStr(e_t);
+	str7=NumToStr(e_t1);
+	str8=NumToStr(e_t2);
+	str9=NumToStr(u_t);
+
+	str=StrCat(str1,SEPARATOR,str2,SEPARATOR,str3,SEPARATOR,str4,SEPARATOR,str5,SEPARATOR,str6,SEPARATOR,str7,SEPARATOR,str8,SEPARATOR,str9,"\n");
+	str_len=StrLen(str);
+	if(str_len > FILE_SIZE - bytesWritten)
+	{
+		TextOut(0, LCD_LINE1, "no more space ");
+		shutdown(SEC_1);
+	}
+
+	unsigned int rtn_code = WriteString(handle, str,count);
+	bytesWritten = bytesWritten + count;
+
+	// Return code handling
+	if (rtn_code != LDR_SUCCESS)
+	{
+		switch (rtn_code)
+		{
+			case LDR_EOFEXPECTED:
+				TextOut(0, LCD_LINE1, "no more space ");
+				break;
+			default:
+				// Unanticipated exception.
+				TextOut(0, LCD_LINE1, "write failed ");
+				break;
+		}
+		shutdown(SEC_1);
+	}
+}
+
+void write_short(int theta_fn, int e_t, int u_t)
+{
+	int count,str_len;
+	string str, str1,str2,str3;
+	str1=NumToStr(theta_fn);
+	str2=NumToStr(e_t);
+	str3=NumToStr(u_t);
+
+	str=StrCat(str1,SEPARATOR,str2,SEPARATOR,str3,"\n");
+	str_len=StrLen(str);
+	if(str_len > FILE_SIZE - bytesWritten)
+	{
+		TextOut(0, LCD_LINE1, "no more space ");
+		shutdown(SEC_1);
+	}
+
+	unsigned int rtn_code = WriteString(handle, str,count);
+	bytesWritten = bytesWritten + count;
+	
+	// Return code handling
+	if (rtn_code != LDR_SUCCESS)
+	{
+		switch (rtn_code)
+		{
+			case LDR_EOFEXPECTED:
+				TextOut(0, LCD_LINE1, "no more space ");
+				break;
+			default:
+				// Unanticipated exception.
+				TextOut(0, LCD_LINE1, "write failed ");
+				break;
+		}
+		shutdown(SEC_1);
+	}
+}
+
+// Open the data file for writing.
+void open_for_write()
+{
+	unsigned int file_size = FILE_SIZE;
+	handle = 0;
+	// Start with the assumptions the file doesn't exist and needs to be created.
+	DeleteFile(FILE_NAME);
+	unsigned int rtn_code = CreateFile(FILE_NAME, file_size, handle);
+	// If the file already exists, open it with the intent of adding to the data
+	// that is already there.
+	if (rtn_code == LDR_FILEEXISTS){
+		DeleteFile(FILE_NAME);
+		rtn_code = OpenFileAppend(FILE_NAME, file_size, handle);
+	}	
+	switch (rtn_code)
+	{
+		case LDR_SUCCESS:
+			return;
+		case LDR_FILEISFULL:
+			TextOut(0, LCD_LINE1, "file is full ");
+			break;
+		default:
+			// Unanticipated exception.
+			TextOut(0, LCD_LINE1, "write open ");
+			break;
+	}
+	shutdown(SEC_1);
+	
+}
+
+task main()
+{
+	DeleteFile(FILE_NAME);
+	open_for_write();
+	/* Uruchamiamy czujniki */
+	SetSensorHTGyro(GYRO);
+	SetSensorLowspeed(ACCEL);
+	
+	//FILTER
+	ArrayInit(theta_m,0,FILTER_TAB_LEN);
+	accelTemp = 0;
+	theta_fn = 0;
+	theta_fn1 = 0;
+	omega_f = 0;
+	
+	//PID
+	y_ref = 0;
+	u_t = 0;
+	e_t = 0;
+	e_t1 = 0;
+	e_t2 = 0;
+}
+
+task stoj()
+{
+	Follows(main);
+	int x,y,z,gyro;
+	unsigned int time_prev;
+	unsigned int time_next;
+	
+	time_prev = CurrentTick();
+	time_next=time_prev;
+	while(true)
+	{	
+		// wait aproximately 10ms
+		
+		while(time_next - time_prev < (1000/HZ))
+		{
+			time_next=CurrentTick();
+		}
+		time_prev=time_next;
+		ReadSensorHTAccel(ACCEL, z, y, x);
+		gyro = SensorHTGyro(GYRO);
+		gyro=gyro - GYRO_OFFSET;
+		//gyro=0;
+		//z = z - ACCEL_Z_OFFSET;
+		filter(gyro,x,z);
+		regulateAnglePID();
+
+		//write_full(gyro, accelTemp, x, theta_m[0], theta_fn, e_t, e_t1, e_t2, u_t);
+		//write_short(theta_fn,e_t,u_t);
+		// tutaj dodamy sterowanie
+		
+		if(u_t<0)
+		{
+			OnFwd(MOTORS, -u_t/MOTOR_SCALE);
+		}
+		else if(u_t>0)
+		{
+			OnRev(MOTORS, u_t/MOTOR_SCALE);
+		} else {
+			OnFwd(MOTORS, 0);
+		}
+		
+		
+	}
+}
